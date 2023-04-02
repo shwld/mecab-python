@@ -1,25 +1,32 @@
-FROM continuumio/anaconda3
+FROM python:3.9-buster
 
-WORKDIR /var/data
-RUN apt-get -qqy update \
-    && apt-get -qqy upgrade \
-    && apt-get -y --no-install-recommends install \
-        build-essential \
-        libmecab2 \
-        libmecab-dev \
-        mecab \
-        mecab-ipadic \
-        mecab-ipadic-utf8 \
-        mecab-utils \
-    && rm -rf /var/lib/apt/lists/* \
-    && git clone --depth 1 https://github.com/neologd/mecab-ipadic-neologd.git \
-    && cd mecab-ipadic-neologd \
-    && mkdir -p `mecab-config --dicdir`"/mecab-ipadic-neologd" \
-    && ./bin/install-mecab-ipadic-neologd -n -y -a \
-    && pip install mecab-python3
+RUN apt-get update && \
+    apt-get -y install locales && \
+    localedef -f UTF-8 -i ja_JP ja_JP.UTF-8
 
-# RUN conda install -y numpy scipy \
-#    && conda install -y gensim
-# HACK: Intel MKL FATAL ERROR: Cannot load libmkl_avx2.so or libmkl_def.so.
-RUN pip install -U numpy scipy \
-    && pip install -U gensim
+ENV LANG ja_JP.UTF-8
+ENV LANGUAGE ja_JP:ja
+ENV LC_ALL ja_JP.UTF-8
+ENV TZ JST-9
+
+RUN pip install --upgrade pip && \
+    curl -sSL https://install.python-poetry.org | python -
+ENV PATH /root/.local/bin:$PATH
+
+# Create Jupyter Notebook config file
+RUN mkdir -p /root/.jupyter \
+  && echo "c.NotebookApp.allow_root = True" >> /root/.jupyter/jupyter_notebook_config.py \
+  && echo "c.NotebookApp.ip = '*'" >> /root/.jupyter/jupyter_notebook_config.py \
+  && echo "c.NotebookApp.token = ''" >> /root/.jupyter/jupyter_notebook_config.py
+
+EXPOSE 8888
+
+# Install MeCab
+RUN apt install -y --no-install-recommends mecab libmecab-dev mecab-ipadic-utf8 sudo \
+  && pip install mecab-python3
+
+# Install mecab-ipadic-NEologd
+RUN git clone --depth 1 https://github.com/neologd/mecab-ipadic-neologd.git /tmp/neologd \
+  && /tmp/neologd/bin/install-mecab-ipadic-neologd -n -a -y \
+  && sed -i -e "s|^dicdir.*$|dicdir = /usr/lib/mecab/dic/mecab-ipadic-neologd|" /etc/mecabrc \
+  && rm -rf /tmp/neologd
